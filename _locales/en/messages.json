@@ -1,0 +1,108 @@
+{
+  "extName": {
+    "message": "Claude Cooldown Reminder",
+    "description": "Extension name shown in Chrome and on the Web Store."
+  },
+  "extDescription": {
+    "message": "Watches your Claude.ai usage and pings you with a native OS notification the moment your message limit resets.",
+    "description": "Extension description shown in Chrome and on the Web Store."
+  },
+  "actionTitle": {
+    "message": "Claude Cooldown Reminder",
+    "description": "Tooltip on the toolbar icon."
+  },
+
+  "popupTitle": {
+    "message": "Claude Cooldown Reminder",
+    "description": "Title bar / popup heading."
+  },
+  "popupSubtitle": {
+    "message": "We'll ping you the moment your quota refills.",
+    "description": "Subtitle under the popup heading."
+  },
+
+  "statusIdle": {
+    "message": "Not watching",
+    "description": "Status when no alarm is set."
+  },
+  "statusArmed": {
+    "message": "Alarm scheduled",
+    "description": "Status when an alarm is active."
+  },
+
+  "hourLabel": { "message": "h" },
+  "minLabel":  { "message": "m" },
+  "secLabel":  { "message": "s" },
+
+  "emptyHint": {
+    "message": "When Claude shows a usage-limit notice, the extension grabs the reset time and arms the alarm automatically. You can also enter a time manually below.",
+    "description": "Hint text shown when no alarm is currently set."
+  },
+
+  "manualSectionTitle": {
+    "message": "Set unlock time manually",
+    "description": "Heading for the manual-input section."
+  },
+  "dateLabel": { "message": "Date" },
+  "timeLabel": { "message": "Time" },
+
+  "chip1h": { "message": "+1 hr" },
+  "chip2h": { "message": "+2 hr" },
+  "chip4h": { "message": "+4 hr" },
+  "chip5h": { "message": "+5 hr" },
+
+  "btnSet":     { "message": "Set alarm" },
+  "btnCancel":  { "message": "Cancel alarm" },
+  "btnRescan":  { "message": "Rescan current Claude tab" },
+  "btnTest":    { "message": "Test notification" },
+
+  "privacy": {
+    "message": "All processing happens on your machine. This extension never transmits your page text or alarm time to any remote server.",
+    "description": "Privacy disclaimer at the bottom of the popup."
+  },
+
+  "sourceManualLabel": { "message": "Source: manual" },
+  "sourceAutoLabel":   { "message": "Source: auto-detected" },
+
+  "todayWord": { "message": "today" },
+  "alarmTimeLabel": {
+    "message": "Alarm time: $WHEN$",
+    "description": "Label that displays when the alarm will fire.",
+    "placeholders": {
+      "when": { "content": "$1", "example": "today 18:30" }
+    }
+  },
+
+  "errFillDateTime":  { "message": "Pick a date and time" },
+  "errFutureTime":    { "message": "Pick a future time" },
+  "errSetFailed":     { "message": "Failed to set" },
+
+  "errNoClaudePage":  { "message": "No Claude tab found" },
+  "errRefreshPage":   { "message": "Refresh the page first" },
+  "okCaptured":       { "message": "Captured!" },
+  "okNoTime":         { "message": "No time on page" },
+  "errScanFailed":    { "message": "Scan failed" },
+  "rescanScanning":   { "message": "Scanning…", "description": "Shown on the rescan button while detection is in progress." },
+  "rescanOpenedUsage":{ "message": "Opened usage page", "description": "Shown when no time was captured on the current tab and the extension opened claude.ai/settings/usage." },
+
+  "testSent":         { "message": "Check the corner" },
+  "testHelpHint": {
+    "message": "If nothing appears within a few seconds, check:\n• macOS: System Settings → Notifications → Google Chrome\n• Windows: Settings → System → Notifications → Google Chrome\n• Whether system Focus / Do Not Disturb is on"
+  },
+  "testDeniedByChrome": { "message": "Notifications disabled in Chrome" },
+  "testDeniedHint": {
+    "message": "Chrome has muted notifications for this extension.\nOpen chrome://settings/content/notifications and make sure \"Claude Cooldown Reminder\" is not in the Block list."
+  },
+  "testFailed":       { "message": "Trigger failed" },
+  "errPrefix": {
+    "message": "Error: $MSG$",
+    "placeholders": {
+      "msg": { "content": "$1", "example": "permission-denied" }
+    }
+  },
+
+  "notifTitleReady": { "message": "Claude quota has reset" },
+  "notifMsgReady":   { "message": "You can send tasks again." },
+  "notifTitleTest":  { "message": "Claude Cooldown Reminder · Test" },
+  "notifMsgTest":    { "message": "If you see this, the notification channel is working." }
+}

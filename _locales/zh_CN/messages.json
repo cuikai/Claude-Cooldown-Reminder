@@ -1,0 +1,108 @@
+{
+  "extName": {
+    "message": "Claude 提醒助手",
+    "description": "扩展名称，显示在 Chrome 和应用商店中。"
+  },
+  "extDescription": {
+    "message": "监控 Claude.ai 对话额度状态，并在冷却期结束后通过操作系统原生通知提醒您。",
+    "description": "扩展描述，显示在 Chrome 和应用商店中。"
+  },
+  "actionTitle": {
+    "message": "Claude 提醒助手",
+    "description": "工具栏图标的悬浮标题。"
+  },
+
+  "popupTitle": {
+    "message": "Claude 提醒助手",
+    "description": "弹窗标题。"
+  },
+  "popupSubtitle": {
+    "message": "额度恢复后自动提醒你",
+    "description": "弹窗副标题。"
+  },
+
+  "statusIdle": {
+    "message": "未在监听",
+    "description": "未设置闹钟时的状态文本。"
+  },
+  "statusArmed": {
+    "message": "闹钟已设置",
+    "description": "已设置闹钟时的状态文本。"
+  },
+
+  "hourLabel": { "message": "时" },
+  "minLabel":  { "message": "分" },
+  "secLabel":  { "message": "秒" },
+
+  "emptyHint": {
+    "message": "当 Claude 出现额度耗尽提示时，本扩展会自动捕获重置时间并设置闹钟。你也可以在下方手动输入解锁时间。",
+    "description": "未设置闹钟时显示的提示。"
+  },
+
+  "manualSectionTitle": {
+    "message": "手动设置解锁时间",
+    "description": "手动输入区块的标题。"
+  },
+  "dateLabel": { "message": "日期" },
+  "timeLabel": { "message": "时间" },
+
+  "chip1h": { "message": "+1 小时" },
+  "chip2h": { "message": "+2 小时" },
+  "chip4h": { "message": "+4 小时" },
+  "chip5h": { "message": "+5 小时" },
+
+  "btnSet":     { "message": "设置闹钟" },
+  "btnCancel":  { "message": "取消闹钟" },
+  "btnRescan":  { "message": "在当前 Claude 页面重新扫描" },
+  "btnTest":    { "message": "测试通知" },
+
+  "privacy": {
+    "message": "本扩展仅在本地处理数据，不会向任何远程服务器发送您的页面文本或时间信息。",
+    "description": "弹窗底部的隐私说明。"
+  },
+
+  "sourceManualLabel": { "message": "来源：手动设置" },
+  "sourceAutoLabel":   { "message": "来源：自动捕获" },
+
+  "todayWord": { "message": "今天" },
+  "alarmTimeLabel": {
+    "message": "闹钟时间：$WHEN$",
+    "description": "显示闹钟将在何时触发。",
+    "placeholders": {
+      "when": { "content": "$1", "example": "今天 18:30" }
+    }
+  },
+
+  "errFillDateTime":  { "message": "请填写日期和时间" },
+  "errFutureTime":    { "message": "请选择未来时间" },
+  "errSetFailed":     { "message": "设置失败" },
+
+  "errNoClaudePage":  { "message": "未找到 Claude 页面" },
+  "errRefreshPage":   { "message": "请刷新页面后重试" },
+  "okCaptured":       { "message": "已捕获时间" },
+  "okNoTime":         { "message": "页面上未发现时间" },
+  "errScanFailed":    { "message": "扫描失败" },
+  "rescanScanning":   { "message": "扫描中…", "description": "正在执行扫描时按钮上的提示。" },
+  "rescanOpenedUsage":{ "message": "已打开用量页面", "description": "当前标签页未抓到时间，扩展自动打开 claude.ai/settings/usage 时的提示。" },
+
+  "testSent":         { "message": "已发送，请查看右上角" },
+  "testHelpHint": {
+    "message": "如果几秒内没有看到通知，请检查：\n• macOS：系统设置 → 通知 → Google Chrome 是否开启\n• Windows：设置 → 系统 → 通知 → Google Chrome 是否开启\n• 系统专注/勿扰模式是否打开"
+  },
+  "testDeniedByChrome": { "message": "通知被 Chrome 禁用" },
+  "testDeniedHint": {
+    "message": "Chrome 把本扩展的通知关闭了。\n请打开 chrome://settings/content/notifications，\n确保未把\"Claude 提醒助手\"列入\"不允许\"。"
+  },
+  "testFailed":       { "message": "触发失败" },
+  "errPrefix": {
+    "message": "错误：$MSG$",
+    "placeholders": {
+      "msg": { "content": "$1", "example": "permission-denied" }
+    }
+  },
+
+  "notifTitleReady": { "message": "Claude 额度已恢复" },
+  "notifMsgReady":   { "message": "您可以继续发送任务了" },
+  "notifTitleTest":  { "message": "Claude 提醒助手 · 测试通知" },
+  "notifMsgTest":    { "message": "如果你看到这条，说明通知通道工作正常。" }
+}
