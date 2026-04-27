@@ -77,8 +77,6 @@
   "errFutureTime":    { "message": "Pick a future time" },
   "errSetFailed":     { "message": "Failed to set" },
 
-  "errNoClaudePage":  { "message": "No Claude tab found" },
-  "errRefreshPage":   { "message": "Refresh the page first" },
   "okCaptured":       { "message": "Captured!" },
   "okNoTime":         { "message": "No time on page" },
   "errScanFailed":    { "message": "Scan failed" },

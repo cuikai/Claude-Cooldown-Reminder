@@ -45,8 +45,6 @@ const I18N_FALLBACK = {
   errFillDateTime: 'Pick a date and time',
   errFutureTime: 'Pick a future time',
   errSetFailed: 'Failed to set',
-  errNoClaudePage: 'No Claude tab found',
-  errRefreshPage: 'Refresh the page first',
   okCaptured: 'Captured!',
   okNoTime: 'No time on page',
   errScanFailed: 'Scan failed',

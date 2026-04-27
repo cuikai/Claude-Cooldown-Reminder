@@ -77,8 +77,6 @@
   "errFutureTime":    { "message": "请选择未来时间" },
   "errSetFailed":     { "message": "设置失败" },
 
-  "errNoClaudePage":  { "message": "未找到 Claude 页面" },
-  "errRefreshPage":   { "message": "请刷新页面后重试" },
   "okCaptured":       { "message": "已捕获时间" },
   "okNoTime":         { "message": "页面上未发现时间" },
   "errScanFailed":    { "message": "扫描失败" },

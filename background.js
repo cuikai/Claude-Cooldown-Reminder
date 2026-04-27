@@ -39,12 +39,25 @@ async function clearState() {
 }
 
 /**
+ * 给自动捕获的时间加 1 分钟缓冲。
+ * Claude 的 "Resets in 4 hr 53 min" 是粗略向下取整，
+ * 如果按它给的时间响铃，可能 Claude 的倒计时还没结束就提醒了用户。
+ * 手动设置的时间是用户明确指定的，不加缓冲。
+ */
+const AUTO_DETECT_BUFFER_MS = 60 * 1000;
+
+/**
  * 注册（或刷新）闹钟。
  * 如果传入的时间小于等于现在，则立即触发一次通知并清理状态。
  */
 async function scheduleAlarm(unlockTimestamp, source) {
   const now = Date.now();
   if (!Number.isFinite(unlockTimestamp)) return { ok: false, reason: 'invalid-time' };
+
+  // 自动来源加缓冲；手动来源原样保留。
+  if (source !== 'manual') {
+    unlockTimestamp = unlockTimestamp + AUTO_DETECT_BUFFER_MS;
+  }
 
   if (unlockTimestamp <= now + 1000) {
     await fireNotification();
@@ -221,12 +234,13 @@ async function performRescan() {
     candidates = await chrome.tabs.query({ url: 'https://claude.ai/*' });
   }
 
+  // 先快试一下当前活动标签（最多 2 次）
   if (candidates.length) {
-    const r = await scanTabWithRetry(candidates[0].id, 1);
+    const r = await scanTabWithRetry(candidates[0].id, 2, 1200);
     if (r.found) return { ok: true, found: true, ts: r.ts, source: 'existing-tab' };
   }
 
-  // 3) 没有现成 claude 标签，或者扫不到时间 → 打开 / 聚焦 /settings/usage
+  // 3) 当前标签没扫到 → 找/造一个 /settings/usage 标签再扫
   let usageTabId;
   let createdNew = false;
 
@@ -239,21 +253,31 @@ async function performRescan() {
         await chrome.windows.update(usageTabs[0].windowId, { focused: true });
       }
     } catch (_) { /* ignore */ }
+
+    // 关键修复：复用已存在的 usage 标签时强制 reload 一次。
+    // 原因：如果该标签是在扩展上次 reload 之前就开着的，
+    // Chrome 不会自动给它注入 content script，扫描永远拿不到回应。
+    // /settings/usage 没有可丢失的页面状态，重新加载是无副作用的。
+    try {
+      await chrome.tabs.reload(usageTabId);
+      await waitForTabComplete(usageTabId);
+      await new Promise((r) => setTimeout(r, 3000));
+    } catch (_) { /* ignore reload errors */ }
   } else {
     try {
       const newTab = await chrome.tabs.create({ url: USAGE_URL, active: true });
       usageTabId = newTab.id;
       createdNew = true;
       await waitForTabComplete(usageTabId);
-      // 等 React 渲染出 "Resets in ..." 区块
-      await new Promise((r) => setTimeout(r, 2500));
+      // 等 React 渲染出 "Resets in ..." 区块；claude 设置页较慢，给 3.5s
+      await new Promise((r) => setTimeout(r, 3500));
     } catch (e) {
       return { ok: false, error: (e && e.message) || 'open-tab-failed' };
     }
   }
 
-  // SPA 可能还在渲染：多重试几次
-  const r2 = await scanTabWithRetry(usageTabId, createdNew ? 4 : 3, 1500);
+  // SPA 渲染节奏不可预测：6 次重试 × 2s = 最多 12s 的扫描窗口
+  const r2 = await scanTabWithRetry(usageTabId, 6, 2000);
   return {
     ok: true,
     found: !!r2.found,

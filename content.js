@@ -255,11 +255,13 @@
     }
     if (node.nodeType !== Node.ELEMENT_NODE) return;
 
-    // 优先扫描小块文本，避免整页 textContent
+    // React 在一次 mutation 里可能挂载整块卡片（远超几百字符），
+    // 不能因为大就跳过。parseRelativeDuration 走 indexOf + 小窗口正则，
+    // 32KB 文本也不到 1ms，性能完全可接受。
     const text = (node.textContent || '').trim();
-    if (text.length > 0 && text.length < 800) {
-      scanText(text);
-    }
+    if (!text) return;
+    const sample = text.length > 32 * 1024 ? text.slice(0, 32 * 1024) : text;
+    scanText(sample);
   }
 
   // ----- 启动 MutationObserver -----
@@ -288,15 +290,20 @@
       characterData: true
     });
 
-    // 启动后做一次全局扫描，避免遗漏首次进入页面就出现的提示
-    setTimeout(() => {
+    // MutationObserver 已经覆盖了绝大多数场景，所以只补两次"安全网"扫描：
+    //   - 2s：覆盖初次渲染时 React 一次性挂载、observer 可能错过的情况
+    //   - 6s：覆盖慢渲染或客户端路由切换
+    // 一旦 dispatch 成功就立刻跳过后续扫描；避免反复触发 innerText 强制 layout。
+    function safetyNetScan() {
+      if (lastDispatchedTs !== 0) return;
       try {
         const text = (document.body && document.body.innerText) || '';
-        // 只取最末尾 4KB，避免昂贵
-        const tail = text.length > 4096 ? text.slice(-4096) : text;
-        scanText(tail);
+        const sample = text.length > 32 * 1024 ? text.slice(0, 32 * 1024) : text;
+        scanText(sample);
       } catch (_) { /* ignore */ }
-    }, 1500);
+    }
+    setTimeout(safetyNetScan, 2000);
+    setTimeout(safetyNetScan, 6000);
   }
 
   if (document.body) {
