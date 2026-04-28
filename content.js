@@ -52,6 +52,13 @@
   // 通用：仅匹配 HH:MM（24/12 小时）
   const GENERIC_TIME_RE = /\b(\d{1,2}):(\d{2})\s*(am|pm|a\.m\.|p\.m\.)?/i;
 
+  // Weekly limits 上常见的格式： "Resets Fri 8:00 PM"
+  // 也兼容 "Resets Friday 20:00" / "Resets Fri 8 PM"
+  const EN_WEEKLY_RE = /\bresets\s+(sun(?:day)?|mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?\b/i;
+
+  // 中文（尽力支持）："重置 周五 20:00" / "重置于 周五 下午8:00"
+  const CN_WEEKLY_RE = /(?:重置(?:于|在)?)[\s：:]*?(周[一二三四五六日天])\s*(上午|下午|早上|晚上|凌晨|中午)?\s*(\d{1,2})(?:[:：](\d{2}))?/;
+
   /**
    * 把解析到的小时、分钟、AM/PM 转换为「未来最近」的 Date。
    * 如果当前时间已经晚于今天的目标时间，则推到明天。
@@ -81,6 +88,109 @@
       target.setDate(target.getDate() + 1);
     }
     return target;
+  }
+
+  function weekdayToIndex(weekdayText) {
+    if (!weekdayText) return null;
+    const key = weekdayText.trim().slice(0, 3).toLowerCase();
+    const map = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+    return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : null;
+  }
+
+  function cnWeekdayToIndex(w) {
+    const map = { '周日': 0, '周天': 0, '周一': 1, '周二': 2, '周三': 3, '周四': 4, '周五': 5, '周六': 6 };
+    return Object.prototype.hasOwnProperty.call(map, w) ? map[w] : null;
+  }
+
+  /**
+   * 把「周几 + 时间」转换为未来最近一次发生的 Date（若已过则推到下周）。
+   */
+  function toFutureWeekdayDate(weekdayIndex, hour, minute, meridiem, periodHint) {
+    if (!Number.isFinite(weekdayIndex) || weekdayIndex < 0 || weekdayIndex > 6) return null;
+    const now = new Date();
+
+    // 先把 hour/minute 解析成 24h
+    let h = hour;
+    const m = (meridiem || '').toLowerCase().replace(/\./g, '');
+    if (m === 'pm' && h < 12) h += 12;
+    if (m === 'am' && h === 12) h = 0;
+    if (periodHint) {
+      if ((periodHint === '下午' || periodHint === '晚上') && h < 12) h += 12;
+      if (periodHint === '中午' && h < 12) h += 12;
+      if ((periodHint === '上午' || periodHint === '早上' || periodHint === '凌晨') && h === 12) h = 0;
+    }
+    if (h < 0 || h > 23 || minute < 0 || minute > 59) return null;
+
+    const target = new Date(now);
+    const diff = (weekdayIndex - now.getDay() + 7) % 7;
+    target.setDate(target.getDate() + diff);
+    target.setHours(h, minute, 0, 0);
+
+    // 如果目标时刻已经过去（或几乎到了），推到下周同一时刻
+    if (target.getTime() <= now.getTime() + 30 * 1000) {
+      target.setDate(target.getDate() + 7);
+    }
+    return target;
+  }
+
+  /**
+   * 判断 usage 页面里的 "All models" 是否已经 100% used。
+   */
+  function isAllModelsFullyUsed(text) {
+    if (!text) return false;
+    // English
+    const en = text.match(/all models[\s\S]{0,80}?(\d{1,3})%\s*used/i);
+    if (en) {
+      const p = parseInt(en[1], 10);
+      return Number.isFinite(p) && p >= 100;
+    }
+    // Chinese
+    const cn = text.match(/所有模型[\s\S]{0,80}?(\d{1,3})%\s*(?:已)?使用/i);
+    if (cn) {
+      const p = parseInt(cn[1], 10);
+      return Number.isFinite(p) && p >= 100;
+    }
+    return false;
+  }
+
+  /**
+   * 当 "All models" 100% used 时，从该块里解析 Weekly limits 的重置时间：
+   * 例如 "All models ... Resets Fri 8:00 PM ... 100% used"。
+   */
+  function parseAllModelsWeeklyReset(text) {
+    if (!text) return null;
+    const lower = text.toLowerCase();
+    let idx = lower.indexOf('all models');
+    let labelLen = 'all models'.length;
+    if (idx < 0) {
+      idx = text.indexOf('所有模型');
+      labelLen = '所有模型'.length;
+    }
+    if (idx < 0) return null;
+
+    // 只取 All models 后面一小段，避免误匹配到 Claude Design 等其它行
+    const slice = text.substring(idx, Math.min(text.length, idx + labelLen + 260));
+    if (!/100%\s*used/i.test(slice) && !/100%\s*(?:已)?使用/i.test(slice)) return null;
+
+    const m = slice.match(EN_WEEKLY_RE);
+    if (m) {
+      const weekday = weekdayToIndex(m[1]);
+      const hour = parseInt(m[2], 10);
+      const minute = m[3] ? parseInt(m[3], 10) : 0;
+      const meridiem = m[4] || null;
+      return toFutureWeekdayDate(weekday, hour, minute, meridiem, null);
+    }
+
+    const c = slice.match(CN_WEEKLY_RE);
+    if (c) {
+      const weekday = cnWeekdayToIndex(c[1]);
+      const period = c[2] || null;
+      const hour = parseInt(c[3], 10);
+      const minute = c[4] ? parseInt(c[4], 10) : 0;
+      return toFutureWeekdayDate(weekday, hour, minute, null, period);
+    }
+
+    return null;
   }
 
   /**
@@ -205,6 +315,31 @@
   let lastDispatchedAt = 0;
   let lastDispatchedTs = 0;
 
+  // usage 页面特殊：当 All models 100% used 时，必须按 Weekly limits 的重置时间，
+  // 不能按 Current session 的 "Resets in ..." 来算。
+  let allModelsExhausted = false;
+  let lastUsageProbeAt = 0;
+  let lastUsageProbeText = '';
+
+  function isUsagePage() {
+    try { return location && location.pathname && location.pathname.startsWith('/settings/usage'); }
+    catch (_) { return false; }
+  }
+
+  function probeUsagePageText() {
+    if (!isUsagePage()) return '';
+    const now = Date.now();
+    if (lastUsageProbeText && (now - lastUsageProbeAt) < 1500) return lastUsageProbeText;
+    lastUsageProbeAt = now;
+    try {
+      lastUsageProbeText = (document.body && document.body.innerText) || '';
+    } catch (_) {
+      lastUsageProbeText = '';
+    }
+    if (isAllModelsFullyUsed(lastUsageProbeText)) allModelsExhausted = true;
+    return lastUsageProbeText;
+  }
+
   function dispatchUnlock(date, kind) {
     const ts = date.getTime();
     const now = Date.now();
@@ -233,10 +368,28 @@
   function scanText(text) {
     if (!text) return;
 
+    // 规则修复：
+    // - 当 usage 页的 All models 已 100% used 时，优先抓 Weekly limits 的 "Resets Fri 8:00 PM"
+    // - 此时忽略 Current session 的相对倒计时（"Resets in ..."）。
+    // 注意：为了避免先扫到 Current session 导致误设闹钟，这里会轻量探测整页 innerText（带节流）。
+    if (isUsagePage()) {
+      const pageText = probeUsagePageText() || text;
+      if (isAllModelsFullyUsed(pageText)) {
+        allModelsExhausted = true;
+        const weekly = parseAllModelsWeeklyReset(pageText) || parseAllModelsWeeklyReset(text);
+        if (weekly) {
+          dispatchUnlock(weekly, 'weekly');
+        }
+        return; // 不用相对倒计时
+      }
+    }
+
     // 路径 A：使用量页面 / 任何带 "Resets in X hr Y min" 这种相对时长的片段。
     // 不需要"额度耗尽"关键字，未达上限时也能从 /settings/usage 抓到。
     const relDate = parseRelativeDuration(text);
     if (relDate) {
+      // 如果已经确认 All models 耗尽，就不要再被相对倒计时覆盖
+      if (allModelsExhausted) return;
       dispatchUnlock(relDate, 'relative');
       return;
     }
@@ -322,10 +475,21 @@
     // 32KB 上限足够覆盖任何 Claude 设置页，又能避免极端情况下卡顿。
     const sample = text.length > 32 * 1024 ? text.slice(0, 32 * 1024) : text;
 
-    let date = parseRelativeDuration(sample);
+    let date = null;
     let kind = 'relative';
+
+    // 修复：All models 100% used 时，以 Weekly limits 的重置时间为准
+    if (isUsagePage() && isAllModelsFullyUsed(sample)) {
+      allModelsExhausted = true;
+      date = parseAllModelsWeeklyReset(sample);
+      kind = 'weekly';
+    } else {
+      date = parseRelativeDuration(sample);
+      kind = 'relative';
+    }
+
     if (!date) {
-      // 退而求其次：找绝对时间提示
+      // 退而求其次：找绝对时间提示（聊天页/弹窗提示里常见）
       if (looksLikeQuotaMessage(sample)) {
         date = extractResetTime(sample);
         kind = 'absolute';
