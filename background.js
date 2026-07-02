@@ -11,10 +11,8 @@
 
 const ALARM_NAME = 'claude-cooldown-reminder';
 const NOTIFICATION_ID = 'claude-cooldown-reminder-notification';
-const TEST_NOTIFICATION_ID = NOTIFICATION_ID + '-test';
 const STORAGE_KEY = 'reminderState';
 const CLAUDE_URL = 'https://claude.ai/';
-const USAGE_URL = 'https://claude.ai/settings/usage';
 
 /**
  * 持久化状态结构：
@@ -39,25 +37,14 @@ async function clearState() {
 }
 
 /**
- * 给自动捕获的时间加 1 分钟缓冲。
- * Claude 的 "Resets in 4 hr 53 min" 是粗略向下取整，
- * 如果按它给的时间响铃，可能 Claude 的倒计时还没结束就提醒了用户。
- * 手动设置的时间是用户明确指定的，不加缓冲。
- */
-const AUTO_DETECT_BUFFER_MS = 60 * 1000;
-
-/**
- * 注册（或刷新）闹钟。
+ * 注册（或刷新）闹钟。目标时间直接使用 API 返回的精确 resets_at，
+ * 不再加缓冲（缓冲是过去解析页面粗略文案时的遗留做法），
+ * 保证倒计时和窗口列表显示的时间完全一致。
  * 如果传入的时间小于等于现在，则立即触发一次通知并清理状态。
  */
-async function scheduleAlarm(unlockTimestamp, source) {
+async function scheduleAlarm(unlockTimestamp) {
   const now = Date.now();
   if (!Number.isFinite(unlockTimestamp)) return { ok: false, reason: 'invalid-time' };
-
-  // 自动来源加缓冲；手动来源原样保留。
-  if (source !== 'manual') {
-    unlockTimestamp = unlockTimestamp + AUTO_DETECT_BUFFER_MS;
-  }
 
   if (unlockTimestamp <= now + 1000) {
     await fireNotification();
@@ -66,20 +53,11 @@ async function scheduleAlarm(unlockTimestamp, source) {
     return { ok: true, fired: true };
   }
 
-  // 容差去重：相对时长在使用量页面随时间漂移，3 分钟内的相近目标视为同一个，
-  // 避免每次内容脚本重新扫描就重置闹钟。
+  // 容差去重：相对时长随扫描时间漂移，3 分钟内的相近目标视为同一个，
+  // 避免每次刷新用量就重置闹钟。
   const existing = await getState();
   if (existing && Math.abs(existing.unlockTimestamp - unlockTimestamp) < 3 * 60 * 1000) {
     return { ok: true, unchanged: true };
-  }
-
-  // 自动捕获不要覆盖用户手动设置的闹钟（除非时间差距明显，> 30 分钟）。
-  if (
-    source !== 'manual' &&
-    existing && existing.source === 'manual' &&
-    Math.abs(existing.unlockTimestamp - unlockTimestamp) < 30 * 60 * 1000
-  ) {
-    return { ok: true, unchanged: true, kept: 'manual' };
   }
 
   await chrome.alarms.clear(ALARM_NAME);
@@ -87,15 +65,9 @@ async function scheduleAlarm(unlockTimestamp, source) {
   await setState({
     unlockTimestamp,
     createdAt: now,
-    source: source || 'auto'
+    source: 'auto'
   });
   return { ok: true, scheduled: true };
-}
-
-async function cancelAlarm() {
-  await chrome.alarms.clear(ALARM_NAME);
-  await clearState();
-  return { ok: true };
 }
 
 /**
@@ -116,34 +88,31 @@ function getPermissionLevel() {
 
 /**
  * 触发系统通知。返回 { ok, permission, error }。
- * @param {{ test?: boolean }} [opts]
  */
-async function fireNotification(opts = {}) {
+async function fireNotification() {
   const permission = await getPermissionLevel();
   if (permission !== 'granted') {
     return { ok: false, permission, error: 'permission-denied' };
   }
 
-  // 测试通知用独立 ID，避免和真正闹钟通知互相覆盖
-  const id = opts.test ? TEST_NOTIFICATION_ID : NOTIFICATION_ID;
   // 文案来自 chrome.i18n —— 用户的 Chrome 语言决定使用哪个 _locales 目录。
-  const title = chrome.i18n.getMessage(opts.test ? 'notifTitleTest' : 'notifTitleReady');
-  const message = chrome.i18n.getMessage(opts.test ? 'notifMsgTest' : 'notifMsgReady');
+  const title = chrome.i18n.getMessage('notifTitleReady');
+  const message = chrome.i18n.getMessage('notifMsgReady');
 
   try {
     // 先清掉同 ID 的旧通知，确保下次仍能弹出
     await new Promise((resolve) => {
-      chrome.notifications.clear(id, () => resolve());
+      chrome.notifications.clear(NOTIFICATION_ID, () => resolve());
     });
 
     const createdId = await new Promise((resolve, reject) => {
-      chrome.notifications.create(id, {
+      chrome.notifications.create(NOTIFICATION_ID, {
         type: 'basic',
         iconUrl: chrome.runtime.getURL('icons/icon128.png'),
         title,
         message,
         priority: 2,
-        requireInteraction: !opts.test  // 测试通知不需要长驻
+        requireInteraction: true
       }, (createdId) => {
         if (chrome.runtime.lastError) reject(chrome.runtime.lastError);
         else resolve(createdId);
@@ -176,116 +145,188 @@ function scoreClaudeTab(tab) {
   return score;
 }
 
-function waitForTabComplete(tabId, timeoutMs = 15000) {
-  return new Promise((resolve) => {
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      try { chrome.tabs.onUpdated.removeListener(listener); } catch (_) {}
-      resolve();
-    };
-    const listener = (id, info) => {
-      if (id === tabId && info.status === 'complete') finish();
-    };
-    chrome.tabs.onUpdated.addListener(listener);
-    setTimeout(finish, timeoutMs);
-  });
-}
+// ----- 用量数据（claude.ai /usage API）-----
 
 /**
- * 让目标标签页的内容脚本扫描，最多重试 attempts 次（页面 SPA 渲染需要时间）。
+ * 组织 ID 发现：
+ *   1. 优先读 claude.ai 自己维护的 lastActiveOrg cookie（多组织账号下最准确）
+ *   2. 回退到列出 /api/organizations（cookie 缺失或指向已失效的组织时）
  */
-async function scanTabWithRetry(tabId, attempts = 1, gapMs = 1500) {
-  for (let i = 0; i < attempts; i++) {
-    const r = await new Promise((resolve) => {
-      try {
-        chrome.tabs.sendMessage(
-          tabId,
-          { type: 'CLAUDE_REMINDER_RESCAN' },
-          (resp) => { void chrome.runtime.lastError; resolve(resp || { ok: false }); }
-        );
-      } catch (_) { resolve({ ok: false }); }
+async function getOrgIdFromCookie() {
+  try {
+    const cookie = await chrome.cookies.get({ name: 'lastActiveOrg', url: 'https://claude.ai' });
+    return (cookie && cookie.value) || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function getOrgIdFromApi() {
+  try {
+    const resp = await fetch('https://claude.ai/api/organizations', {
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include'
     });
-    if (r && r.ok && r.found) return r;
-    if (i < attempts - 1) await new Promise((res) => setTimeout(res, gapMs));
+    if (!resp.ok) return null;
+    const orgs = await resp.json();
+    if (!Array.isArray(orgs) || orgs.length === 0) return null;
+    const chatOrg = orgs.find(
+      (o) => Array.isArray(o.capabilities) && o.capabilities.includes('chat')
+    );
+    return (chatOrg || orgs[0]).uuid || null;
+  } catch (_) {
+    return null;
   }
-  return { ok: false, found: false };
 }
 
 /**
- * 用户在 popup 点了"重新扫描"。流程：
- *   1. 优先扫当前窗口里激活的 claude.ai 标签
- *   2. 没有就扫任意一个 claude.ai 标签
- *   3. 都没有，或者前面没扫到时间 → 打开（或聚焦）/settings/usage 再扫一次
- *
- * 整套流程放在 background 里跑，因为 popup 关闭后 setTimeout/await 会被打断；
- * service worker 不会受 popup 关闭影响。
+ * 把 /usage 响应归一化成一组进度条条目：
+ *   { key, model, percentage, resetsAt, order }
+ * 新格式是 limits 数组（kind: session / weekly_all / weekly_scoped），
+ * 旧格式是顶层 five_hour / seven_day / seven_day_sonnet / seven_day_opus 字段。
  */
-async function performRescan() {
-  // 1) 当前窗口里活动的 claude.ai 标签
-  let candidates = await chrome.tabs.query({
-    url: 'https://claude.ai/*',
-    active: true,
-    currentWindow: true
-  });
-  // 2) 否则任意一个
-  if (!candidates.length) {
-    candidates = await chrome.tabs.query({ url: 'https://claude.ai/*' });
-  }
+function normalizeUsage(raw) {
+  const toTs = (iso) => {
+    if (!iso) return null;
+    const t = new Date(iso).getTime();
+    return Number.isFinite(t) ? t : null;
+  };
+  const items = [];
+  const push = (key, model, percentage, resetsAt, order) => {
+    if (typeof percentage !== 'number' || !Number.isFinite(percentage)) return;
+    items.push({ key, model, percentage: Math.max(0, percentage), resetsAt, order });
+  };
 
-  // 先快试一下当前活动标签（最多 2 次）
-  if (candidates.length) {
-    const r = await scanTabWithRetry(candidates[0].id, 2, 1200);
-    if (r.found) return { ok: true, found: true, ts: r.ts, source: 'existing-tab' };
-  }
-
-  // 3) 当前标签没扫到 → 找/造一个 /settings/usage 标签再扫
-  let usageTabId;
-  let createdNew = false;
-
-  const usageTabs = await chrome.tabs.query({ url: 'https://claude.ai/settings/usage*' });
-  if (usageTabs.length) {
-    usageTabId = usageTabs[0].id;
-    try {
-      await chrome.tabs.update(usageTabId, { active: true });
-      if (usageTabs[0].windowId !== undefined) {
-        await chrome.windows.update(usageTabs[0].windowId, { focused: true });
+  if (Array.isArray(raw.limits) && raw.limits.length > 0) {
+    let scopedIdx = 0;
+    for (const entry of raw.limits) {
+      if (entry.kind === 'session') {
+        push('session', null, entry.percent, toTs(entry.resets_at), 0);
+      } else if (entry.kind === 'weekly_all') {
+        push('weekly', null, entry.percent, toTs(entry.resets_at), 1);
+      } else if (entry.kind === 'weekly_scoped') {
+        const model = entry.scope?.model?.display_name || '';
+        push('modelWeekly', model, entry.percent, toTs(entry.resets_at), 2 + scopedIdx++);
       }
-    } catch (_) { /* ignore */ }
-
-    // 关键修复：复用已存在的 usage 标签时强制 reload 一次。
-    // 原因：如果该标签是在扩展上次 reload 之前就开着的，
-    // Chrome 不会自动给它注入 content script，扫描永远拿不到回应。
-    // /settings/usage 没有可丢失的页面状态，重新加载是无副作用的。
-    try {
-      await chrome.tabs.reload(usageTabId);
-      await waitForTabComplete(usageTabId);
-      await new Promise((r) => setTimeout(r, 3000));
-    } catch (_) { /* ignore reload errors */ }
+    }
   } else {
-    try {
-      const newTab = await chrome.tabs.create({ url: USAGE_URL, active: true });
-      usageTabId = newTab.id;
-      createdNew = true;
-      await waitForTabComplete(usageTabId);
-      // 等 React 渲染出 "Resets in ..." 区块；claude 设置页较慢，给 3.5s
-      await new Promise((r) => setTimeout(r, 3500));
-    } catch (e) {
-      return { ok: false, error: (e && e.message) || 'open-tab-failed' };
+    const old = (obj) => (obj ? { p: obj.utilization, r: toTs(obj.resets_at) } : null);
+    const s = old(raw.five_hour);
+    const w = old(raw.seven_day);
+    const so = old(raw.seven_day_sonnet);
+    const op = old(raw.seven_day_opus);
+    if (s) push('session', null, s.p, s.r, 0);
+    if (w) push('weekly', null, w.p, w.r, 1);
+    if (so) push('modelWeekly', 'Sonnet', so.p, so.r, 2);
+    if (op) push('modelWeekly', 'Opus', op.p, op.r, 3);
+  }
+
+  items.sort((a, b) => a.order - b.order);
+  return items;
+}
+
+/**
+ * 某个额度已打满时，直接用 API 给的精确 resets_at 自动布防闹钟。
+ * 比从页面文本里抠 "Resets in 4 hr 53 min" 精确得多。
+ * 取所有已满额度里最早的重置时间。
+ */
+async function maybeAutoArmFromUsage(limits) {
+  const now = Date.now();
+  const maxed = limits.filter(
+    (l) => l.percentage >= 100 && l.resetsAt && l.resetsAt > now
+  );
+  if (!maxed.length) return;
+  const earliest = Math.min(...maxed.map((l) => l.resetsAt));
+  try {
+    await scheduleAlarm(earliest);
+  } catch (_) { /* 布防失败不影响用量展示 */ }
+}
+
+let usageCache = { at: 0, data: null };
+const USAGE_CACHE_TTL_MS = 30 * 1000;
+// 最近一次成功的快照持久化到 storage：网络抖动/重开浏览器时可以先展示旧数据。
+const USAGE_SNAPSHOT_KEY = 'usageSnapshotV1';
+
+async function getStoredSnapshot() {
+  try {
+    const obj = await chrome.storage.local.get(USAGE_SNAPSHOT_KEY);
+    return obj[USAGE_SNAPSHOT_KEY] || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/** 失败响应统一带上 stale 兜底数据（如果有），让 popup 依然能展示。 */
+async function usageFailure(reason) {
+  return { ok: false, reason, stale: await getStoredSnapshot() };
+}
+
+/** 请求某个组织的 /usage。返回 { raw } 或 { errReason }。 */
+async function fetchUsageFor(orgId) {
+  let resp;
+  try {
+    resp = await fetch(`https://claude.ai/api/organizations/${orgId}/usage`, {
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include'
+    });
+  } catch (_) {
+    return { errReason: 'network' };
+  }
+  if (resp.status === 401) return { errReason: 'not-logged-in' };
+  if (resp.status === 403 || resp.status === 404) return { errReason: 'wrong-org' };
+  if (!resp.ok) return { errReason: 'http-' + resp.status };
+  try {
+    return { raw: await resp.json() };
+  } catch (_) {
+    return { errReason: 'bad-json' };
+  }
+}
+
+async function getUsageSnapshot(force = false) {
+  if (!force && usageCache.data && Date.now() - usageCache.at < USAGE_CACHE_TTL_MS) {
+    return usageCache.data;
+  }
+
+  // 组织发现：cookie 优先，缺失时列 API
+  const cookieOrgId = await getOrgIdFromCookie();
+  let orgId = cookieOrgId || await getOrgIdFromApi();
+  if (!orgId) return usageFailure('not-logged-in');
+
+  let result = await fetchUsageFor(orgId);
+
+  // cookie 指向的组织打不开（切换过账号、组织被移除等）→ 用 API 列表再试一次
+  if (result.errReason === 'wrong-org' && cookieOrgId) {
+    const altOrgId = await getOrgIdFromApi();
+    if (altOrgId && altOrgId !== cookieOrgId) {
+      orgId = altOrgId;
+      result = await fetchUsageFor(altOrgId);
     }
   }
 
-  // SPA 渲染节奏不可预测：6 次重试 × 2s = 最多 12s 的扫描窗口
-  const r2 = await scanTabWithRetry(usageTabId, 6, 2000);
-  return {
-    ok: true,
-    found: !!r2.found,
-    ts: r2.ts,
-    openedUsage: true,
-    createdNew
-  };
+  if (result.errReason) {
+    return usageFailure(result.errReason === 'wrong-org' ? 'not-logged-in' : result.errReason);
+  }
+
+  const limits = normalizeUsage(result.raw);
+  const snapshot = { ok: true, limits, fetchedAt: Date.now() };
+  usageCache = { at: snapshot.fetchedAt, data: snapshot };
+  try {
+    await chrome.storage.local.set({ [USAGE_SNAPSHOT_KEY]: snapshot });
+  } catch (_) { /* 持久化失败不影响本次返回 */ }
+
+  await maybeAutoArmFromUsage(limits);
+  return snapshot;
 }
+
+// ----- 用量轮询 -----
+//
+// 没有 content script 之后，这是唯一的"无人值守"检测通道：
+// 每 15 分钟拉一次 /usage，额度打满就用精确的 resets_at 自动布防闹钟。
+// chrome.alarms 会唤醒休眠的 service worker，无需常驻。
+const USAGE_POLL_ALARM = 'claude-usage-poll';
+const USAGE_POLL_MINUTES = 15;
+
+chrome.alarms.create(USAGE_POLL_ALARM, { periodInMinutes: USAGE_POLL_MINUTES });
 
 // ----- 事件处理 -----
 
@@ -299,17 +340,17 @@ chrome.runtime.onInstalled.addListener(async () => {
 });
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === USAGE_POLL_ALARM) {
+    // 静默轮询：失败（未登录、断网）就等下一轮，不打扰用户
+    try { await getUsageSnapshot(true); } catch (_) { /* ignore */ }
+    return;
+  }
   if (alarm.name !== ALARM_NAME) return;
   await fireNotification();
   await clearState();
 });
 
 chrome.notifications.onClicked.addListener(async (notificationId) => {
-  // 测试通知：点了就关，不打开任何页面
-  if (notificationId === TEST_NOTIFICATION_ID) {
-    chrome.notifications.clear(TEST_NOTIFICATION_ID);
-    return;
-  }
   if (notificationId !== NOTIFICATION_ID) return;
   chrome.notifications.clear(NOTIFICATION_ID);
 
@@ -339,7 +380,7 @@ chrome.notifications.onClicked.addListener(async (notificationId) => {
 
 chrome.notifications.onClosed.addListener((notificationId) => {
   // 主动清理同 ID 通知，确保下次能再弹
-  if (notificationId === NOTIFICATION_ID || notificationId === TEST_NOTIFICATION_ID) {
+  if (notificationId === NOTIFICATION_ID) {
     chrome.notifications.clear(notificationId);
   }
 });
@@ -353,35 +394,19 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       }
 
       switch (msg.type) {
-        case 'CLAUDE_RESET_DETECTED': {
-          const ts = Number(msg.unlockTimestamp);
-          const result = await scheduleAlarm(ts, 'auto');
-          sendResponse(result);
-          return;
-        }
-        case 'CLAUDE_RESET_MANUAL': {
-          const ts = Number(msg.unlockTimestamp);
-          const result = await scheduleAlarm(ts, 'manual');
-          sendResponse(result);
-          return;
-        }
         case 'CLAUDE_REMINDER_GET_STATE': {
           const state = await getState();
           sendResponse({ ok: true, state });
           return;
         }
-        case 'CLAUDE_REMINDER_CANCEL': {
-          const result = await cancelAlarm();
-          sendResponse(result);
-          return;
-        }
         case 'CLAUDE_REMINDER_TEST_NOTIFICATION': {
-          const result = await fireNotification({ test: true });
+          // 直接发一条正式文案的通知，让用户确认通知通道畅通
+          const result = await fireNotification();
           sendResponse(result);
           return;
         }
-        case 'CLAUDE_REMINDER_TRIGGER_RESCAN': {
-          const result = await performRescan();
+        case 'CLAUDE_USAGE_GET': {
+          const result = await getUsageSnapshot(!!msg.force);
           sendResponse(result);
           return;
         }

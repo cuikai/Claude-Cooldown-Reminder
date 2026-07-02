@@ -1,7 +1,10 @@
 /**
  * Claude Cooldown Reminder - Popup script
  *
- * Renders alarm state + countdown, handles manual input and control buttons.
+ * 三块内容，全部由 claude.ai 的 /usage API 数据驱动：
+ *   1. 状态卡片：闹钟倒计时（额度打满时后台自动布防），或会话额度的重置倒计时
+ *   2. 窗口卡片：接下来 3 个 5 小时窗口的推算（按连续使用假设）
+ *   3. 用量卡片：各额度的进度条 + 重置时间
  * All user-facing strings come from chrome.i18n (see _locales/).
  */
 
@@ -10,60 +13,61 @@ const $ = (id) => document.getElementById(id);
 const els = {
   card: $('status-card'),
   label: $('status-label'),
-  countdown: $('countdown'),
+  cdInline: $('cd-inline'),
   emptyHint: $('empty-hint'),
-  h: $('cd-h'), m: $('cd-m'), s: $('cd-s'),
-  target: $('target-time'),
-  source: $('source-tag'),
-  date: $('manual-date'),
-  time: $('manual-time'),
-  set: $('btn-set'),
-  cancel: $('btn-cancel'),
-  rescan: $('btn-rescan'),
+  windowsList: $('windows-list'),
+  usageList: $('usage-list'),
+  usageNote: $('usage-note'),
+  usageUpdated: $('usage-updated'),
+  usageRefresh: $('btn-usage-refresh'),
   test: $('btn-test'),
-  helpHint: $('help-hint'),
+  subtitle: $('subtitle'),
 };
 
 let timerId = null;
-let currentState = null;
+let currentState = null;    // 后台闹钟状态
+let lastUsage = null;       // 最近一次 CLAUDE_USAGE_GET 响应（可能 ok，也可能带 stale 兜底）
+let countdownTarget = null; // 状态卡片倒计时目标（ms）
+let usageTimerId = null;
+let lastRenderKey = null;   // 状态/窗口区域的渲染键：数据没变就不重画
 
 // ===== i18n helpers =====
 //
 // Chrome's _locales/ files are loaded only at extension boot. After we add
 // or edit them you MUST fully reload the extension at chrome://extensions —
 // just refreshing the page is not enough. To guard against the popup ever
-// rendering raw key names ("testHelpHint" etc.) we ship an English fallback
-// dictionary baked into the code.
+// rendering raw key names we ship an English fallback dictionary in code.
 const I18N_FALLBACK = {
   statusIdle: 'Not watching',
   statusArmed: 'Alarm scheduled',
+  statusWatching: 'Next reset',
+  statusReady: 'Ready to go',
+  statusNoData: 'Waiting for usage data…',
   todayWord: 'today',
-  alarmTimeLabel: 'Alarm time: $1',
-  sourceManualLabel: 'Source: manual',
-  sourceAutoLabel: 'Source: auto-detected',
+  tomorrowWord: 'tomorrow',
 
-  errFillDateTime: 'Pick a date and time',
-  errFutureTime: 'Pick a future time',
-  errSetFailed: 'Failed to set',
-  okCaptured: 'Captured!',
-  okNoTime: 'No time on page',
-  errScanFailed: 'Scan failed',
-  rescanScanning: 'Scanning…',
-  rescanOpenedUsage: 'Opened usage page',
+  windowsIdle: 'Send a message now to start a new 5-hour window.',
 
-  testSent: 'Sent — check the corner',
-  testHelpHint:
-    "If nothing appears within a few seconds, check:\n" +
-    "• macOS: System Settings → Notifications → Google Chrome\n" +
-    "• Windows: Settings → System → Notifications → Google Chrome\n" +
-    "• Whether system Focus / Do Not Disturb is on",
-  testDeniedByChrome: 'Notifications disabled in Chrome',
-  testDeniedHint:
-    "Chrome has muted notifications for this extension.\n" +
-    "Open chrome://settings/content/notifications and make sure " +
-    "\"Claude Cooldown Reminder\" is not in the Block list.",
-  testFailed: 'Trigger failed',
-  errPrefix: 'Error: $1',
+  usageSectionTitle: 'Usage limits',
+  btnUsageRefresh: 'Refresh',
+  btnTest: 'Send a test notification',
+  testSentHint: 'Sent. Nothing shown? Check the OS notification permission for Chrome.',
+  testDeniedHint: 'Chrome has blocked notifications for this extension.',
+  testFailedHint: 'Failed: $1',
+  usageLoading: 'Loading usage…',
+  usageNotLoggedIn: 'Sign in to claude.ai in this browser to see your usage.',
+  usageError: "Couldn't load usage data. Is claude.ai reachable?",
+  usageErrorNetwork: 'Network unavailable or claude.ai is unreachable.',
+  usageEmpty: 'No active limits reported. You are good to go.',
+  usageUpdatedAt: 'Updated $1',
+  usageStaleAt: 'Refresh failed — showing data from $1',
+  limitSession: 'Session (5h)',
+  limitWeekly: 'Weekly',
+  limitModelWeekly: '$1 Weekly',
+  unitDay: 'd',
+  unitHour: 'h',
+  unitMin: 'm',
+  resetNow: 'resetting…',
 };
 
 let i18nWarned = false;
@@ -116,19 +120,29 @@ function applyStaticI18n() {
 // ===== utilities =====
 function pad(n) { return String(n).padStart(2, '0'); }
 
-function fmtTarget(ts) {
+/** "今天 19:09" / "明天 00:09" / "7月5日 10:09"。 */
+function fmtDayTime(ts) {
   const d = new Date(ts);
-  const today = new Date();
-  const sameDay =
-    d.getFullYear() === today.getFullYear() &&
-    d.getMonth() === today.getMonth() &&
-    d.getDate() === today.getDate();
-  // Locale-aware date display ("today" or e.g. "May 15" / "5月15日").
-  const dateStr = sameDay
-    ? t('todayWord')
-    : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  return t('alarmTimeLabel', [`${dateStr} ${time}`]);
+  const now = new Date();
+  const dayStart = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diffDays = Math.round((dayStart(d) - dayStart(now)) / 86400000);
+  let day;
+  if (diffDays === 0) day = t('todayWord');
+  else if (diffDays === 1) day = t('tomorrowWord');
+  else day = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return `${day} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** "1d 8h" / "2h 10m" / "35m" 风格的紧凑时长；zh 环境下单位取自 _locales。 */
+function fmtShortDur(ms) {
+  const totalMin = Math.ceil(ms / 60000);
+  if (totalMin <= 0) return t('resetNow');
+  const d = Math.floor(totalMin / 1440);
+  const h = Math.floor((totalMin % 1440) / 60);
+  const m = totalMin % 60;
+  if (d > 0) return `${d}${t('unitDay')} ${h}${t('unitHour')}`;
+  if (h > 0) return `${h}${t('unitHour')} ${m}${t('unitMin')}`;
+  return `${m}${t('unitMin')}`;
 }
 
 function send(type, payload = {}) {
@@ -140,48 +154,104 @@ function send(type, payload = {}) {
   });
 }
 
-// ===== rendering =====
+/** 可用于渲染的用量数据：新鲜的优先，其次是持久化的旧快照（stale）。 */
+function effectiveUsage() {
+  if (!lastUsage) return null;
+  if (lastUsage.ok && lastUsage.limits) return lastUsage;
+  if (lastUsage.stale && lastUsage.stale.limits) return lastUsage.stale;
+  return null;
+}
+
+function limitLabel(item) {
+  if (item.key === 'session') return t('limitSession');
+  if (item.key === 'weekly') return t('limitWeekly');
+  return t('limitModelWeekly', [item.model || '?']);
+}
+
+// ===== status card =====
 function setStatus(kind, label) {
   els.card.classList.remove('idle', 'armed', 'fired');
   els.card.classList.add(kind);
   els.label.textContent = label;
 }
 
-function renderState(state) {
-  currentState = state;
+/** 进行中的会话窗口（5 小时额度）的重置目标，没有则返回 null。 */
+function pickSessionReset() {
+  const data = effectiveUsage();
+  if (!data) return null;
+  const now = Date.now();
+  const session = data.limits.find(
+    (l) => l.key === 'session' && l.resetsAt && l.resetsAt > now
+  );
+  return session ? session.resetsAt : null;
+}
 
-  if (!state || !state.unlockTimestamp || state.unlockTimestamp <= Date.now()) {
-    setStatus('idle', t('statusIdle'));
-    els.countdown.hidden = true;
-    els.emptyHint.hidden = false;
-    els.cancel.hidden = true;
-    stopTicking();
+/**
+ * 状态卡片 = 闹钟状态 + 用量数据的合成视图：
+ *   1. 闹钟已布防（某额度打满）→ 闹钟倒计时
+ *   2. 有进行中的会话窗口 → 会话重置倒计时
+ *   3. 有用量数据但没有进行中的窗口（倒计时归零、还没发新消息）→
+ *      绿灯"额度可用"，提示发消息即开启新窗口
+ *   4. 什么都没有 → 按具体原因提示（未登录 / 等待数据）
+ */
+function renderStatus() {
+  const now = Date.now();
+  const armed = currentState && currentState.unlockTimestamp && currentState.unlockTimestamp > now;
+
+  if (armed) {
+    setStatus('armed', t('statusArmed'));
+    countdownTarget = currentState.unlockTimestamp;
+    els.cdInline.hidden = false;
+    els.emptyHint.hidden = true;
+    startTicking();
     return;
   }
 
-  setStatus('armed', t('statusArmed'));
-  els.countdown.hidden = false;
-  els.emptyHint.hidden = true;
-  els.cancel.hidden = false;
-  els.target.textContent = fmtTarget(state.unlockTimestamp);
-  els.source.textContent = state.source === 'manual' ? t('sourceManualLabel') : t('sourceAutoLabel');
-  startTicking();
+  const sessionReset = pickSessionReset();
+  if (sessionReset) {
+    setStatus('idle', t('statusWatching'));
+    countdownTarget = sessionReset;
+    els.cdInline.hidden = false;
+    els.emptyHint.hidden = true;
+    startTicking();
+    return;
+  }
+
+  countdownTarget = null;
+  els.cdInline.hidden = true;
+  stopTicking();
+
+  if (effectiveUsage()) {
+    // 窗口已重置 / 从未开始：绿灯 + 引导发消息
+    setStatus('fired', t('statusReady'));
+    els.emptyHint.textContent = t('windowsIdle');
+  } else {
+    setStatus('idle', t('statusIdle'));
+    els.emptyHint.textContent =
+      lastUsage && !lastUsage.ok && lastUsage.reason === 'not-logged-in'
+        ? t('usageNotLoggedIn')
+        : t('statusNoData');
+  }
+  els.emptyHint.hidden = false;
 }
 
 function tick() {
-  if (!currentState || !currentState.unlockTimestamp) return;
-  const remain = Math.max(0, currentState.unlockTimestamp - Date.now());
+  if (!countdownTarget) return;
+  const remain = Math.max(0, countdownTarget - Date.now());
   if (remain <= 0) {
+    // 目标到点：闹钟可能刚触发，或者额度窗口刚重置 → 都重新拉一遍。
+    // 先停表，避免新数据还没回来时每秒重复触发刷新。
+    stopTicking();
+    countdownTarget = null;
     refreshState();
+    loadUsage(true);
     return;
   }
   const totalSec = Math.floor(remain / 1000);
   const h = Math.floor(totalSec / 3600);
   const m = Math.floor((totalSec % 3600) / 60);
   const s = totalSec % 60;
-  els.h.textContent = pad(h);
-  els.m.textContent = pad(m);
-  els.s.textContent = pad(s);
+  els.cdInline.textContent = `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
 function startTicking() {
@@ -194,151 +264,260 @@ function stopTicking() {
   if (timerId) { clearInterval(timerId); timerId = null; }
 }
 
-async function refreshState() {
+async function fetchAlarmState() {
   const resp = await send('CLAUDE_REMINDER_GET_STATE');
-  renderState(resp.state);
+  currentState = resp.state || null;
 }
 
-// ===== manual form =====
-function fillDefaultManual() {
-  // Default: now + 5 hours
-  const d = new Date(Date.now() + 5 * 60 * 60 * 1000);
-  els.date.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  els.time.value = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+async function refreshState() {
+  await fetchAlarmState();
+  renderStatus();
 }
 
-function manualToTimestamp() {
-  const d = els.date.value;
-  const tt = els.time.value;
-  if (!d || !tt) return null;
-  const [y, mo, da] = d.split('-').map(Number);
-  const [hh, mm] = tt.split(':').map(Number);
-  const dt = new Date(y, mo - 1, da, hh, mm, 0, 0);
-  if (isNaN(dt.getTime())) return null;
-  return dt.getTime();
+/**
+ * 状态 + 窗口区域的按需重绘。
+ * resets_at 在窗口结束前不会变，闹钟时间同理——数据没变就跳过重画，
+ * 30 秒一轮的定时刷新只更新用量进度条。
+ * 例外："额度可用"状态下窗口推算锚定在"现在"，每轮都要跟着走。
+ */
+function maybeRenderStatusArea() {
+  const now = Date.now();
+  const armedTs =
+    currentState && currentState.unlockTimestamp > now ? currentState.unlockTimestamp : 0;
+  const sessionReset = pickSessionReset() || 0;
+  const hasData = effectiveUsage() ? 1 : 0;
+  const failReason = lastUsage && !lastUsage.ok ? lastUsage.reason : '';
+  const key = `${armedTs}|${sessionReset}|${hasData}|${failReason}`;
+
+  const isReady = hasData && !sessionReset && !armedTs;
+
+  if (key !== lastRenderKey || isReady) {
+    lastRenderKey = key;
+    renderWindows();
+    renderStatus();
+  }
 }
 
-async function onSet() {
-  const ts = manualToTimestamp();
-  if (!ts) {
-    flash(els.set, t('errFillDateTime'));
+// ===== 5-hour windows =====
+
+const WINDOW_MS = 5 * 60 * 60 * 1000;
+const WINDOW_COUNT = 3;
+
+/**
+ * 向后推 3 个 5 小时窗口。锚点：
+ *   - 有进行中的会话窗口 → 它的 resets_at（当前窗口的结束由上方倒计时表达）
+ *   - 没有（额度可用状态）→ 现在，即"如果你现在开始"的推算
+ * （窗口实际从你发出的第一条消息开始计时，此处为连续使用的推算。）
+ */
+function renderWindows() {
+  const data = effectiveUsage();
+  if (!data) {
+    els.windowsList.hidden = true;
     return;
   }
-  if (ts <= Date.now()) {
-    flash(els.set, t('errFutureTime'));
-    return;
+
+  const anchor = pickSessionReset() || Date.now();
+
+  els.windowsList.textContent = '';
+  let start = anchor;
+  for (let i = 1; i <= WINDOW_COUNT; i++) {
+    addWindowRow(String(i), `${fmtDayTime(start)} → ${fmtDayTime(start + WINDOW_MS)}`);
+    start += WINDOW_MS;
   }
-  els.set.disabled = true;
-  const resp = await send('CLAUDE_RESET_MANUAL', { unlockTimestamp: ts });
-  els.set.disabled = false;
-  if (!resp.ok) {
-    flash(els.set, t('errSetFailed'));
-    return;
-  }
-  await refreshState();
+
+  els.windowsList.hidden = false;
 }
 
-async function onCancel() {
-  els.cancel.disabled = true;
-  await send('CLAUDE_REMINDER_CANCEL');
-  els.cancel.disabled = false;
-  await refreshState();
+function addWindowRow(tag, text) {
+  const row = document.createElement('div');
+  row.className = 'win-row';
+  const tagEl = document.createElement('span');
+  tagEl.className = 'win-tag';
+  tagEl.textContent = tag;
+  const timeEl = document.createElement('span');
+  timeEl.className = 'win-time';
+  timeEl.textContent = text;
+  row.append(tagEl, timeEl);
+  els.windowsList.appendChild(row);
 }
 
-async function onRescan() {
-  els.rescan.disabled = true;
-  // 立即给个反馈：扫描可能要几秒（可能需要打开 /settings/usage 等渲染）
-  flash(els.rescan, t('rescanScanning'), 60 * 1000);
-  try {
-    // 整个流程委托给 background：popup 关闭后也能继续。
-    // 如果 background 打开了一个新标签，焦点会切走，popup 会关闭，
-    // 这条响应不会回到 popup —— 但 background 还是会把闹钟写入 storage，
-    // 用户下次打开 popup 就能看到倒计时。
-    const resp = await send('CLAUDE_REMINDER_TRIGGER_RESCAN');
+// ===== usage bars =====
 
-    if (!resp || !resp.ok) {
-      flash(els.rescan, t('errScanFailed'));
+function severityClass(pct) {
+  if (pct >= 85) return 'crit';
+  if (pct >= 60) return 'warn';
+  return 'ok';
+}
+
+function usageNote(msg, isError) {
+  els.usageNote.textContent = msg;
+  els.usageNote.classList.toggle('error', !!isError);
+  els.usageNote.hidden = false;
+}
+
+function reasonMessage(reason) {
+  if (reason === 'not-logged-in') return t('usageNotLoggedIn');
+  if (reason === 'network') return t('usageErrorNetwork');
+  return t('usageError');
+}
+
+function renderBars(limits) {
+  els.usageList.textContent = '';
+  const now = Date.now();
+
+  for (const item of limits) {
+    const pct = Math.round(item.percentage);
+
+    const row = document.createElement('div');
+    row.className = `usage-row ${severityClass(pct)}`;
+
+    const top = document.createElement('div');
+    top.className = 'usage-top';
+
+    const name = document.createElement('span');
+    name.className = 'u-name';
+    name.textContent = limitLabel(item) + ':';
+
+    const pctEl = document.createElement('span');
+    pctEl.className = 'u-pct';
+    pctEl.textContent = `${pct}%`;
+
+    const reset = document.createElement('span');
+    reset.className = 'u-reset';
+    if (item.resetsAt && item.resetsAt > now) {
+      reset.textContent = fmtShortDur(item.resetsAt - now);
+      reset.title = new Date(item.resetsAt).toLocaleString();
+    }
+
+    top.append(name, pctEl, reset);
+
+    const track = document.createElement('div');
+    track.className = 'u-track';
+    const fill = document.createElement('div');
+    fill.className = 'u-fill';
+    fill.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+    track.appendChild(fill);
+
+    row.append(top, track);
+    els.usageList.appendChild(row);
+  }
+
+  els.usageList.hidden = false;
+}
+
+function fmtClock(ts) {
+  const d = new Date(ts);
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/**
+ * 用量卡片的渲染，覆盖所有情况：
+ *   - 拉取成功 → 进度条 + "更新于 HH:MM"
+ *   - 拉取失败但有旧快照 → 旧进度条 + 失败原因 + "显示 HH:MM 的数据"
+ *   - 拉取失败且无旧快照 → 只有原因提示（未登录 / 网络 / 其它）
+ *   - 成功但没有任何限制条目 → "当前没有生效中的额度限制"
+ */
+function renderUsage(snapshot) {
+  els.usageUpdated.hidden = true;
+  els.usageUpdated.classList.remove('error');
+
+  if (snapshot && snapshot.ok) {
+    if (!snapshot.limits.length) {
+      els.usageList.hidden = true;
+      usageNote(t('usageEmpty'), false);
       return;
     }
-
-    if (resp.found) {
-      await new Promise((r) => setTimeout(r, 80));
-      await refreshState();
-      flash(els.rescan, t('okCaptured'));
-    } else if (resp.openedUsage) {
-      // 已打开 /settings/usage 但还没扫到时间。
-      // 内容脚本里的 MutationObserver 会在页面渲染出 "Resets in..." 时自动捕获。
-      flash(els.rescan, t('rescanOpenedUsage'));
-    } else {
-      flash(els.rescan, t('okNoTime'));
+    renderBars(snapshot.limits);
+    els.usageNote.hidden = true;
+    if (snapshot.fetchedAt) {
+      els.usageUpdated.textContent = t('usageUpdatedAt', [fmtClock(snapshot.fetchedAt)]);
+      els.usageUpdated.hidden = false;
     }
-  } catch (_) {
-    flash(els.rescan, t('errScanFailed'));
+    return;
+  }
+
+  // 失败路径
+  const reason = snapshot && snapshot.reason;
+  const stale = snapshot && snapshot.stale;
+  if (stale && stale.limits && stale.limits.length) {
+    renderBars(stale.limits);
+    usageNote(reasonMessage(reason), true);
+    if (stale.fetchedAt) {
+      els.usageUpdated.textContent = t('usageStaleAt', [fmtClock(stale.fetchedAt)]);
+      els.usageUpdated.classList.add('error');
+      els.usageUpdated.hidden = false;
+    }
+  } else {
+    els.usageList.hidden = true;
+    usageNote(reasonMessage(reason), true);
+  }
+}
+
+async function loadUsage(force = false) {
+  const snapshot = await send('CLAUDE_USAGE_GET', { force });
+  lastUsage = snapshot;
+  // 用量进度条每轮都更新（百分比在变）
+  renderUsage(snapshot);
+  // 后台可能刚根据满额数据自动布防了闹钟 → 同步一下闹钟状态，
+  // 但状态/窗口区域只在重置时间、闹钟等真正变化时才重画。
+  await fetchAlarmState();
+  maybeRenderStatusArea();
+}
+
+async function onUsageRefresh() {
+  els.usageRefresh.disabled = true;
+  try {
+    await loadUsage(true);
   } finally {
-    els.rescan.disabled = false;
+    els.usageRefresh.disabled = false;
   }
 }
 
 async function onTest() {
   els.test.disabled = true;
-  try {
-    const resp = await send('CLAUDE_REMINDER_TEST_NOTIFICATION');
-    if (resp && resp.ok) {
-      flash(els.test, t('testSent'));
-      showHelpHint(t('testHelpHint'));
-    } else if (resp && resp.permission === 'denied') {
-      flash(els.test, t('testDeniedByChrome'));
-      showHelpHint(t('testDeniedHint'));
-    } else {
-      flash(els.test, t('testFailed'));
-      const err = (resp && resp.error) || 'unknown';
-      showHelpHint(t('errPrefix', [String(err)]));
-    }
-  } catch (e) {
-    flash(els.test, t('testFailed'));
-  } finally {
-    els.test.disabled = false;
+  const resp = await send('CLAUDE_REMINDER_TEST_NOTIFICATION');
+  els.test.disabled = false;
+
+  const ok = !!(resp && resp.ok);
+  els.test.classList.add(ok ? 'sent' : 'failed');
+  setTimeout(() => els.test.classList.remove('sent', 'failed'), 2500);
+
+  // 副标题临时换成结果提示，几秒后恢复
+  let msg;
+  if (ok) {
+    msg = t('testSentHint');
+  } else if (resp && resp.permission === 'denied') {
+    msg = t('testDeniedHint');
+  } else {
+    msg = t('testFailedHint', [String((resp && (resp.error || resp.reason)) || 'unknown')]);
   }
+  flashSubtitle(msg, ok);
 }
 
-function showHelpHint(text) {
-  if (!els.helpHint) return;
-  els.helpHint.textContent = text;
-  els.helpHint.hidden = false;
-  clearTimeout(showHelpHint._t);
-  showHelpHint._t = setTimeout(() => { els.helpHint.hidden = true; }, 12000);
-}
-
-function flash(btn, msg, ms) {
-  if (!btn) return;
-  const old = btn.dataset.origText || btn.textContent;
-  btn.dataset.origText = old;
-  btn.textContent = msg;
-  if (btn._flashTimer) clearTimeout(btn._flashTimer);
-  btn._flashTimer = setTimeout(() => {
-    btn.textContent = btn.dataset.origText || old;
-    btn._flashTimer = null;
-  }, ms || 1500);
+function flashSubtitle(msg, ok) {
+  if (!els.subtitle.dataset.orig) els.subtitle.dataset.orig = els.subtitle.textContent;
+  els.subtitle.textContent = msg;
+  els.subtitle.classList.toggle('sub-err', !ok);
+  clearTimeout(flashSubtitle._t);
+  flashSubtitle._t = setTimeout(() => {
+    els.subtitle.textContent = els.subtitle.dataset.orig;
+    els.subtitle.classList.remove('sub-err');
+  }, 5000);
 }
 
 // ===== boot =====
 applyStaticI18n();
+els.test.title = t('btnTest');
 
-document.querySelectorAll('.chip').forEach((chip) => {
-  chip.addEventListener('click', () => {
-    const mins = Number(chip.dataset.mins) || 0;
-    const d = new Date(Date.now() + mins * 60 * 1000);
-    els.date.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    els.time.value = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  });
-});
-
-els.set.addEventListener('click', onSet);
-els.cancel.addEventListener('click', onCancel);
-els.rescan.addEventListener('click', onRescan);
+els.usageRefresh.addEventListener('click', onUsageRefresh);
 els.test.addEventListener('click', onTest);
 
-fillDefaultManual();
 refreshState();
+loadUsage();
+// 弹窗开着时定期刷新用量（后台有 30s 缓存，开销很小）
+usageTimerId = setInterval(() => loadUsage(), 30 * 1000);
 
-window.addEventListener('unload', stopTicking);
+window.addEventListener('unload', () => {
+  stopTicking();
+  if (usageTimerId) clearInterval(usageTimerId);
+});

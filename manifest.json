@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extName__",
-  "version": "1.0.2",
+  "version": "2.0.0",
   "description": "__MSG_extDescription__",
   "default_locale": "en",
   "minimum_chrome_version": "116",
   "permissions": [
     "alarms",
+    "cookies",
     "notifications",
     "storage"
   ],
@@ -16,14 +17,6 @@
   "background": {
     "service_worker": "background.js"
   },
-  "content_scripts": [
-    {
-      "matches": ["https://claude.ai/*"],
-      "js": ["content.js"],
-      "run_at": "document_idle",
-      "all_frames": false
-    }
-  ],
   "action": {
     "default_popup": "popup.html",
     "default_title": "__MSG_actionTitle__",

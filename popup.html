@@ -7,12 +7,18 @@
 </head>
 <body>
   <header class="hdr">
-    <div class="brand">
-      <div class="logo" aria-hidden="true">C</div>
-      <div class="brand-text">
-        <h1 data-i18n="popupTitle">Claude Cooldown Reminder</h1>
-        <p class="sub" data-i18n="popupSubtitle">We'll ping you the moment your quota refills.</p>
-      </div>
+    <div class="brand-text">
+      <h1 data-i18n="popupTitle">Claude Cooldown Reminder</h1>
+      <p class="sub">
+        <span id="subtitle" data-i18n="popupSubtitle">We'll ping you the moment your quota refills.</span>
+        <button id="btn-test" class="test-btn" type="button">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+          </svg>
+        </button>
+      </p>
     </div>
   </header>
 
@@ -21,62 +27,24 @@
       <div class="status-line">
         <span class="dot" aria-hidden="true"></span>
         <span id="status-label" data-i18n="statusIdle">Not watching</span>
+        <span class="cd-inline" id="cd-inline" hidden>00:00:00</span>
       </div>
-      <div class="countdown" id="countdown" hidden>
-        <div class="cd-row">
-          <div class="cd-cell"><span id="cd-h">00</span><label data-i18n="hourLabel">h</label></div>
-          <div class="cd-sep">:</div>
-          <div class="cd-cell"><span id="cd-m">00</span><label data-i18n="minLabel">m</label></div>
-          <div class="cd-sep">:</div>
-          <div class="cd-cell"><span id="cd-s">00</span><label data-i18n="secLabel">s</label></div>
-        </div>
-        <div class="target-time" id="target-time"></div>
-        <div class="source-tag" id="source-tag"></div>
+      <div class="empty-hint" id="empty-hint" data-i18n="statusNoData" hidden>
+        Waiting for usage data…
       </div>
-      <div class="empty-hint" id="empty-hint" data-i18n="emptyHint">
-        When Claude shows a usage-limit notice, the extension grabs the reset time and arms the alarm automatically. You can also enter a time manually below.
-      </div>
+      <div id="windows-list" class="windows-list" hidden></div>
     </section>
 
     <section class="card">
-      <h2 data-i18n="manualSectionTitle">Set unlock time manually</h2>
-      <div class="manual-form">
-        <label>
-          <span data-i18n="dateLabel">Date</span>
-          <input type="date" id="manual-date" />
-        </label>
-        <label>
-          <span data-i18n="timeLabel">Time</span>
-          <input type="time" id="manual-time" step="60" />
-        </label>
-        <div class="quick-row">
-          <button class="chip" data-mins="60"  data-i18n="chip1h">+1 hr</button>
-          <button class="chip" data-mins="120" data-i18n="chip2h">+2 hr</button>
-          <button class="chip" data-mins="240" data-i18n="chip4h">+4 hr</button>
-          <button class="chip" data-mins="300" data-i18n="chip5h">+5 hr</button>
-        </div>
-        <div class="actions">
-          <button id="btn-set"    class="primary" data-i18n="btnSet">Set alarm</button>
-          <button id="btn-cancel" class="ghost"   data-i18n="btnCancel" hidden>Cancel alarm</button>
-        </div>
+      <div class="usage-hdr">
+        <h2 data-i18n="usageSectionTitle">Usage limits</h2>
+        <button id="btn-usage-refresh" class="link" data-i18n="btnUsageRefresh">Refresh</button>
       </div>
-    </section>
-
-    <section class="card mini">
-      <div class="mini-row">
-        <button id="btn-rescan" class="link" data-i18n="btnRescan">Rescan current Claude tab</button>
-        <button id="btn-test"   class="link" data-i18n="btnTest">Test notification</button>
-      </div>
-      <pre id="help-hint" class="help-hint" hidden></pre>
-      <p class="privacy" data-i18n="privacy">
-        All processing happens on your machine. This extension never transmits your page text or alarm time to any remote server.
-      </p>
+      <div id="usage-list" class="usage-list" hidden></div>
+      <div id="usage-note" class="usage-note" data-i18n="usageLoading">Loading usage…</div>
+      <div id="usage-updated" class="usage-updated" hidden></div>
     </section>
   </main>
-
-  <footer class="ftr">
-    <span>v1.0.0</span>
-  </footer>
 
   <script src="popup.js"></script>
 </body>

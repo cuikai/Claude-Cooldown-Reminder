@@ -29,78 +29,84 @@
     "message": "Alarm scheduled",
     "description": "Status when an alarm is active."
   },
-
-  "hourLabel": { "message": "h" },
-  "minLabel":  { "message": "m" },
-  "secLabel":  { "message": "s" },
-
-  "emptyHint": {
-    "message": "When Claude shows a usage-limit notice, the extension grabs the reset time and arms the alarm automatically. You can also enter a time manually below.",
-    "description": "Hint text shown when no alarm is currently set."
+  "statusWatching": {
+    "message": "Next reset",
+    "description": "Status-card title when no alarm is set and the countdown shows the usage reset time."
+  },
+  "statusReady": {
+    "message": "Ready to go",
+    "description": "Status title (green) when the countdown hit zero and no new window has started."
+  },
+  "statusNoData": {
+    "message": "Waiting for usage data…",
+    "description": "Placeholder when there is neither an alarm nor usage data."
   },
 
-  "manualSectionTitle": {
-    "message": "Set unlock time manually",
-    "description": "Heading for the manual-input section."
+  "usageSectionTitle": {
+    "message": "Usage limits",
+    "description": "Heading for the usage progress-bar section."
   },
-  "dateLabel": { "message": "Date" },
-  "timeLabel": { "message": "Time" },
-
-  "chip1h": { "message": "+1 hr" },
-  "chip2h": { "message": "+2 hr" },
-  "chip4h": { "message": "+4 hr" },
-  "chip5h": { "message": "+5 hr" },
-
-  "btnSet":     { "message": "Set alarm" },
-  "btnCancel":  { "message": "Cancel alarm" },
-  "btnRescan":  { "message": "Rescan current Claude tab" },
-  "btnTest":    { "message": "Test notification" },
-
-  "privacy": {
-    "message": "All processing happens on your machine. This extension never transmits your page text or alarm time to any remote server.",
-    "description": "Privacy disclaimer at the bottom of the popup."
+  "btnUsageRefresh":  { "message": "Refresh" },
+  "btnTest": {
+    "message": "Send a test notification",
+    "description": "Tooltip on the bell icon next to the subtitle."
   },
+  "testSentHint": {
+    "message": "Sent. Nothing shown? Check the OS notification permission for Chrome.",
+    "description": "Subtitle feedback after a test notification was sent."
+  },
+  "testDeniedHint": {
+    "message": "Chrome has blocked notifications for this extension.",
+    "description": "Shown when Chrome-level notification permission is denied."
+  },
+  "testFailedHint": {
+    "message": "Failed: $MSG$",
+    "description": "Shown when the test notification could not be triggered.",
+    "placeholders": {
+      "msg": { "content": "$1", "example": "unknown-type" }
+    }
+  },
+  "usageLoading":     { "message": "Loading usage…" },
+  "usageNotLoggedIn": { "message": "Sign in to claude.ai in this browser to see your usage." },
+  "usageError":       { "message": "Couldn't load usage data. Is claude.ai reachable?" },
+  "usageEmpty":       { "message": "No active limits reported. You are good to go." },
+  "limitSession":     { "message": "Session (5h)" },
+  "limitWeekly":      { "message": "Weekly" },
+  "limitModelWeekly": {
+    "message": "$MODEL$ Weekly",
+    "description": "Label for a per-model weekly limit.",
+    "placeholders": {
+      "model": { "content": "$1", "example": "Fable" }
+    }
+  },
+  "unitDay":  { "message": "d" },
+  "unitHour": { "message": "h" },
+  "unitMin":  { "message": "m" },
+  "resetNow": { "message": "resetting…" },
+  "usageUpdatedAt": {
+    "message": "Updated $TIME$",
+    "description": "Footer of the usage card showing the last refresh time.",
+    "placeholders": {
+      "time": { "content": "$1", "example": "16:47" }
+    }
+  },
+  "usageStaleAt": {
+    "message": "Refresh failed — showing data from $TIME$",
+    "description": "Shown when the refresh failed and a cached snapshot is displayed.",
+    "placeholders": {
+      "time": { "content": "$1", "example": "16:47" }
+    }
+  },
+  "usageErrorNetwork": { "message": "Network unavailable or claude.ai is unreachable." },
 
-  "sourceManualLabel": { "message": "Source: manual" },
-  "sourceAutoLabel":   { "message": "Source: auto-detected" },
+  "windowsIdle": {
+    "message": "Send a message now to start a new 5-hour window.",
+    "description": "Guidance shown when quota is available and no window is active."
+  },
 
   "todayWord": { "message": "today" },
-  "alarmTimeLabel": {
-    "message": "Alarm time: $WHEN$",
-    "description": "Label that displays when the alarm will fire.",
-    "placeholders": {
-      "when": { "content": "$1", "example": "today 18:30" }
-    }
-  },
-
-  "errFillDateTime":  { "message": "Pick a date and time" },
-  "errFutureTime":    { "message": "Pick a future time" },
-  "errSetFailed":     { "message": "Failed to set" },
-
-  "okCaptured":       { "message": "Captured!" },
-  "okNoTime":         { "message": "No time on page" },
-  "errScanFailed":    { "message": "Scan failed" },
-  "rescanScanning":   { "message": "Scanning…", "description": "Shown on the rescan button while detection is in progress." },
-  "rescanOpenedUsage":{ "message": "Opened usage page", "description": "Shown when no time was captured on the current tab and the extension opened claude.ai/settings/usage." },
-
-  "testSent":         { "message": "Check the corner" },
-  "testHelpHint": {
-    "message": "If nothing appears within a few seconds, check:\n• macOS: System Settings → Notifications → Google Chrome\n• Windows: Settings → System → Notifications → Google Chrome\n• Whether system Focus / Do Not Disturb is on"
-  },
-  "testDeniedByChrome": { "message": "Notifications disabled in Chrome" },
-  "testDeniedHint": {
-    "message": "Chrome has muted notifications for this extension.\nOpen chrome://settings/content/notifications and make sure \"Claude Cooldown Reminder\" is not in the Block list."
-  },
-  "testFailed":       { "message": "Trigger failed" },
-  "errPrefix": {
-    "message": "Error: $MSG$",
-    "placeholders": {
-      "msg": { "content": "$1", "example": "permission-denied" }
-    }
-  },
+  "tomorrowWord": { "message": "tomorrow" },
 
   "notifTitleReady": { "message": "Claude quota has reset" },
-  "notifMsgReady":   { "message": "You can send tasks again." },
-  "notifTitleTest":  { "message": "Claude Cooldown Reminder · Test" },
-  "notifMsgTest":    { "message": "If you see this, the notification channel is working." }
+  "notifMsgReady":   { "message": "You can send tasks again." }
 }
