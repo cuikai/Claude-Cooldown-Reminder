@@ -148,19 +148,9 @@ function scoreClaudeTab(tab) {
 // ----- 用量数据（claude.ai /usage API）-----
 
 /**
- * 组织 ID 发现：
- *   1. 优先读 claude.ai 自己维护的 lastActiveOrg cookie（多组织账号下最准确）
- *   2. 回退到列出 /api/organizations（cookie 缺失或指向已失效的组织时）
+ * 组织 ID 发现：列出 /api/organizations，优先取具备 chat 能力的组织。
+ * （请求会自动携带登录 cookie，这依赖 host_permissions，无需 cookies 权限。）
  */
-async function getOrgIdFromCookie() {
-  try {
-    const cookie = await chrome.cookies.get({ name: 'lastActiveOrg', url: 'https://claude.ai' });
-    return (cookie && cookie.value) || null;
-  } catch (_) {
-    return null;
-  }
-}
-
 async function getOrgIdFromApi() {
   try {
     const resp = await fetch('https://claude.ai/api/organizations', {
@@ -287,22 +277,10 @@ async function getUsageSnapshot(force = false) {
     return usageCache.data;
   }
 
-  // 组织发现：cookie 优先，缺失时列 API
-  const cookieOrgId = await getOrgIdFromCookie();
-  let orgId = cookieOrgId || await getOrgIdFromApi();
+  const orgId = await getOrgIdFromApi();
   if (!orgId) return usageFailure('not-logged-in');
 
-  let result = await fetchUsageFor(orgId);
-
-  // cookie 指向的组织打不开（切换过账号、组织被移除等）→ 用 API 列表再试一次
-  if (result.errReason === 'wrong-org' && cookieOrgId) {
-    const altOrgId = await getOrgIdFromApi();
-    if (altOrgId && altOrgId !== cookieOrgId) {
-      orgId = altOrgId;
-      result = await fetchUsageFor(altOrgId);
-    }
-  }
-
+  const result = await fetchUsageFor(orgId);
   if (result.errReason) {
     return usageFailure(result.errReason === 'wrong-org' ? 'not-logged-in' : result.errReason);
   }
