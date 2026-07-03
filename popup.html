@@ -27,7 +27,14 @@
       <div class="status-line">
         <span class="dot" aria-hidden="true"></span>
         <span id="status-label" data-i18n="statusIdle">Not watching</span>
-        <span class="cd-inline" id="cd-inline" hidden>00:00:00</span>
+        <span class="cd-inline" id="cd-inline" hidden>
+          <svg class="cd-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M6 2h12M6 22h12" />
+            <path d="M6 2c0 5 6 5 6 10 0-5 6-5 6-10M6 22c0-5 6-5 6-10 0 5 6 5 6 10" />
+          </svg>
+          <span class="cd-time" id="cd-time">0秒</span>
+        </span>
       </div>
       <div class="empty-hint" id="empty-hint" data-i18n="statusNoData" hidden>
         Waiting for usage data…

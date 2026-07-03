@@ -11,7 +11,6 @@
     "message": "Claude Cooldown Reminder",
     "description": "Tooltip on the toolbar icon."
   },
-
   "popupTitle": {
     "message": "Claude Cooldown Reminder",
     "description": "Title bar / popup heading."
@@ -20,7 +19,6 @@
     "message": "We'll ping you the moment your quota refills.",
     "description": "Subtitle under the popup heading."
   },
-
   "statusIdle": {
     "message": "Not watching",
     "description": "Status when no alarm is set."
@@ -41,12 +39,13 @@
     "message": "Waiting for usage data…",
     "description": "Placeholder when there is neither an alarm nor usage data."
   },
-
   "usageSectionTitle": {
     "message": "Usage limits",
     "description": "Heading for the usage progress-bar section."
   },
-  "btnUsageRefresh":  { "message": "Refresh" },
+  "btnUsageRefresh": {
+    "message": "Refresh"
+  },
   "btnTest": {
     "message": "Send a test notification",
     "description": "Tooltip on the bell icon next to the subtitle."
@@ -63,50 +62,92 @@
     "message": "Failed: $MSG$",
     "description": "Shown when the test notification could not be triggered.",
     "placeholders": {
-      "msg": { "content": "$1", "example": "unknown-type" }
+      "msg": {
+        "content": "$1",
+        "example": "unknown-type"
+      }
     }
   },
-  "usageLoading":     { "message": "Loading usage…" },
-  "usageNotLoggedIn": { "message": "Sign in to claude.ai in this browser to see your usage." },
-  "usageError":       { "message": "Couldn't load usage data. Is claude.ai reachable?" },
-  "usageEmpty":       { "message": "No active limits reported. You are good to go." },
-  "limitSession":     { "message": "Session (5h)" },
-  "limitWeekly":      { "message": "Weekly" },
+  "usageLoading": {
+    "message": "Loading usage…"
+  },
+  "usageNotLoggedIn": {
+    "message": "Sign in to claude.ai in this browser to see your usage."
+  },
+  "usageError": {
+    "message": "Couldn't load usage data. Is claude.ai reachable?"
+  },
+  "usageEmpty": {
+    "message": "No active limits reported. You are good to go."
+  },
+  "limitSession": {
+    "message": "Session (5h)"
+  },
+  "limitWeekly": {
+    "message": "Weekly"
+  },
   "limitModelWeekly": {
     "message": "$MODEL$ Weekly",
     "description": "Label for a per-model weekly limit.",
     "placeholders": {
-      "model": { "content": "$1", "example": "Fable" }
+      "model": {
+        "content": "$1",
+        "example": "Fable"
+      }
     }
   },
-  "unitDay":  { "message": "d" },
-  "unitHour": { "message": "h" },
-  "unitMin":  { "message": "m" },
-  "resetNow": { "message": "resetting…" },
+  "unitDay": {
+    "message": "d"
+  },
+  "unitHour": {
+    "message": "h"
+  },
+  "unitMin": {
+    "message": "m"
+  },
+  "unitSec": {
+    "message": "s"
+  },
+  "resetNow": {
+    "message": "resetting…"
+  },
   "usageUpdatedAt": {
     "message": "Updated $TIME$",
     "description": "Footer of the usage card showing the last refresh time.",
     "placeholders": {
-      "time": { "content": "$1", "example": "16:47" }
+      "time": {
+        "content": "$1",
+        "example": "16:47"
+      }
     }
   },
   "usageStaleAt": {
     "message": "Refresh failed — showing data from $TIME$",
     "description": "Shown when the refresh failed and a cached snapshot is displayed.",
     "placeholders": {
-      "time": { "content": "$1", "example": "16:47" }
+      "time": {
+        "content": "$1",
+        "example": "16:47"
+      }
     }
   },
-  "usageErrorNetwork": { "message": "Network unavailable or claude.ai is unreachable." },
-
+  "usageErrorNetwork": {
+    "message": "Network unavailable or claude.ai is unreachable."
+  },
   "windowsIdle": {
     "message": "Send a message now to start a new 5-hour window.",
     "description": "Guidance shown when quota is available and no window is active."
   },
-
-  "todayWord": { "message": "today" },
-  "tomorrowWord": { "message": "tomorrow" },
-
-  "notifTitleReady": { "message": "Claude quota has reset" },
-  "notifMsgReady":   { "message": "You can send tasks again." }
+  "todayWord": {
+    "message": "today"
+  },
+  "tomorrowWord": {
+    "message": "tomorrow"
+  },
+  "notifTitleReady": {
+    "message": "Claude quota has reset"
+  },
+  "notifMsgReady": {
+    "message": "You can send tasks again."
+  }
 }

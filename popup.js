@@ -14,6 +14,7 @@ const els = {
   card: $('status-card'),
   label: $('status-label'),
   cdInline: $('cd-inline'),
+  cdTime: $('cd-time'),
   emptyHint: $('empty-hint'),
   windowsList: $('windows-list'),
   usageList: $('usage-list'),
@@ -67,6 +68,7 @@ const I18N_FALLBACK = {
   unitDay: 'd',
   unitHour: 'h',
   unitMin: 'm',
+  unitSec: 's',
   resetNow: 'resetting…',
 };
 
@@ -247,11 +249,22 @@ function tick() {
     loadUsage(true);
     return;
   }
-  const totalSec = Math.floor(remain / 1000);
+  els.cdTime.textContent = fmtCountdown(Math.floor(remain / 1000));
+}
+
+/**
+ * 倒计时专用格式：带单位（19小时 00分 56秒），刻意不用 HH:MM:SS，
+ * 避免和 24 小时制时钟混淆。秒始终显示，让用户一眼看出它在往下走。
+ */
+function fmtCountdown(totalSec) {
   const h = Math.floor(totalSec / 3600);
   const m = Math.floor((totalSec % 3600) / 60);
   const s = totalSec % 60;
-  els.cdInline.textContent = `${pad(h)}:${pad(m)}:${pad(s)}`;
+  const parts = [];
+  if (h > 0) parts.push(`${h}${t('unitHour')}`);
+  if (h > 0 || m > 0) parts.push(`${pad(m)}${t('unitMin')}`);
+  parts.push(`${pad(s)}${t('unitSec')}`);
+  return parts.join('');
 }
 
 function startTicking() {

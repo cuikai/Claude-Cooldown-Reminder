@@ -11,7 +11,6 @@
     "message": "Claude 提醒助手",
     "description": "工具栏图标的悬浮标题。"
   },
-
   "popupTitle": {
     "message": "Claude 提醒助手",
     "description": "弹窗标题。"
@@ -20,7 +19,6 @@
     "message": "额度恢复后自动提醒你",
     "description": "弹窗副标题。"
   },
-
   "statusIdle": {
     "message": "未在监听",
     "description": "未设置闹钟时的状态文本。"
@@ -41,12 +39,13 @@
     "message": "等待用量数据…",
     "description": "既没有闹钟也没有用量数据时的占位提示。"
   },
-
   "usageSectionTitle": {
     "message": "用量额度",
     "description": "用量进度条区块的标题。"
   },
-  "btnUsageRefresh":  { "message": "刷新" },
+  "btnUsageRefresh": {
+    "message": "刷新"
+  },
   "btnTest": {
     "message": "发一条测试通知",
     "description": "副标题旁铃铛图标的悬浮提示。"
@@ -63,50 +62,92 @@
     "message": "发送失败：$MSG$",
     "description": "测试通知触发失败时的提示。",
     "placeholders": {
-      "msg": { "content": "$1", "example": "unknown-type" }
+      "msg": {
+        "content": "$1",
+        "example": "unknown-type"
+      }
     }
   },
-  "usageLoading":     { "message": "正在加载用量…" },
-  "usageNotLoggedIn": { "message": "请先在本浏览器登录 claude.ai，再查看用量。" },
-  "usageError":       { "message": "用量数据获取失败，请检查 claude.ai 是否可访问。" },
-  "usageEmpty":       { "message": "当前没有生效中的额度限制，放心用。" },
-  "limitSession":     { "message": "会话（5 小时）" },
-  "limitWeekly":      { "message": "每周" },
+  "usageLoading": {
+    "message": "正在加载用量…"
+  },
+  "usageNotLoggedIn": {
+    "message": "请先在本浏览器登录 claude.ai，再查看用量。"
+  },
+  "usageError": {
+    "message": "用量数据获取失败，请检查 claude.ai 是否可访问。"
+  },
+  "usageEmpty": {
+    "message": "当前没有生效中的额度限制，放心用。"
+  },
+  "limitSession": {
+    "message": "会话（5 小时）"
+  },
+  "limitWeekly": {
+    "message": "每周"
+  },
   "limitModelWeekly": {
     "message": "$MODEL$ 每周",
     "description": "按模型划分的每周额度标签。",
     "placeholders": {
-      "model": { "content": "$1", "example": "Fable" }
+      "model": {
+        "content": "$1",
+        "example": "Fable"
+      }
     }
   },
-  "unitDay":  { "message": "天" },
-  "unitHour": { "message": "小时" },
-  "unitMin":  { "message": "分" },
-  "resetNow": { "message": "即将重置…" },
+  "unitDay": {
+    "message": "天"
+  },
+  "unitHour": {
+    "message": "小时"
+  },
+  "unitMin": {
+    "message": "分"
+  },
+  "unitSec": {
+    "message": "秒"
+  },
+  "resetNow": {
+    "message": "即将重置…"
+  },
   "usageUpdatedAt": {
     "message": "更新于 $TIME$",
     "description": "用量卡片底部的最近更新时间。",
     "placeholders": {
-      "time": { "content": "$1", "example": "16:47" }
+      "time": {
+        "content": "$1",
+        "example": "16:47"
+      }
     }
   },
   "usageStaleAt": {
     "message": "刷新失败，以下为 $TIME$ 的数据",
     "description": "刷新失败但展示了旧快照时的提示。",
     "placeholders": {
-      "time": { "content": "$1", "example": "16:47" }
+      "time": {
+        "content": "$1",
+        "example": "16:47"
+      }
     }
   },
-  "usageErrorNetwork": { "message": "网络不可用，或 claude.ai 暂时无法访问。" },
-
+  "usageErrorNetwork": {
+    "message": "网络不可用，或 claude.ai 暂时无法访问。"
+  },
   "windowsIdle": {
     "message": "现在发送一条消息，即可开启新的 5 小时窗口。",
     "description": "额度可用（无进行中窗口）时的引导提示。"
   },
-
-  "todayWord": { "message": "今天" },
-  "tomorrowWord": { "message": "明天" },
-
-  "notifTitleReady": { "message": "Claude 额度已恢复" },
-  "notifMsgReady":   { "message": "您可以继续发送任务了" }
+  "todayWord": {
+    "message": "今天"
+  },
+  "tomorrowWord": {
+    "message": "明天"
+  },
+  "notifTitleReady": {
+    "message": "Claude 额度已恢复"
+  },
+  "notifMsgReady": {
+    "message": "您可以继续发送任务了"
+  }
 }

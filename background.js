@@ -216,17 +216,36 @@ function normalizeUsage(raw) {
 }
 
 /**
- * 某个额度已打满时，直接用 API 给的精确 resets_at 自动布防闹钟。
+ * 某个账户级额度已打满时，直接用 API 给的精确 resets_at 自动布防闹钟。
  * 比从页面文本里抠 "Resets in 4 hr 53 min" 精确得多。
- * 取所有已满额度里最早的重置时间。
+ *
+ * 只考虑账户级额度（会话 / 每周）：这两者打满才会真正把你挡在门外。
+ * 单个模型的周限额（如 Fable 每周）打满只影响那一个模型，其它模型照常可用，
+ * 不该拿它的重置时间（往往长达数天）去覆盖会话倒计时。
+ * 取所有已满账户级额度里最早的重置时间。
  */
 async function maybeAutoArmFromUsage(limits) {
   const now = Date.now();
-  const maxed = limits.filter(
-    (l) => l.percentage >= 100 && l.resetsAt && l.resetsAt > now
+  const blocking = limits.filter(
+    (l) =>
+      (l.key === 'session' || l.key === 'weekly') &&
+      l.percentage >= 100 &&
+      l.resetsAt &&
+      l.resetsAt > now
   );
-  if (!maxed.length) return;
-  const earliest = Math.min(...maxed.map((l) => l.resetsAt));
+
+  if (!blocking.length) {
+    // 没有账户级限流：清掉之前可能因模型周限额（Fable 等）误布防的自动闹钟，
+    // 让状态卡片回落到"会话重置倒计时"。手动布防的闹钟不动。
+    const existing = await getState();
+    if (existing && existing.source === 'auto' && existing.unlockTimestamp > now) {
+      await clearState();
+      await chrome.alarms.clear(ALARM_NAME);
+    }
+    return;
+  }
+
+  const earliest = Math.min(...blocking.map((l) => l.resetsAt));
   try {
     await scheduleAlarm(earliest);
   } catch (_) { /* 布防失败不影响用量展示 */ }
