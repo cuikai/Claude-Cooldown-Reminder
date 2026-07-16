@@ -4,7 +4,7 @@
     "description": "Extension name shown in Chrome and on the Web Store."
   },
   "extDescription": {
-    "message": "Watches your Claude.ai usage and pings you with a native OS notification the moment your message limit resets.",
+    "message": "Pings you with a native desktop notification the moment your Claude.ai quota resets, and maps out your next 5-hour windows.",
     "description": "Extension description shown in Chrome and on the Web Store."
   },
   "actionTitle": {

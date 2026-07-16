@@ -245,6 +245,7 @@ function tick() {
     // 先停表，避免新数据还没回来时每秒重复触发刷新。
     stopTicking();
     countdownTarget = null;
+    els.cdInline.hidden = true; // 立即隐藏倒计时，避免刷新期间残留"0秒"
     refreshState();
     loadUsage(true);
     return;

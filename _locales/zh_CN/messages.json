@@ -4,7 +4,7 @@
     "description": "扩展名称，显示在 Chrome 和应用商店中。"
   },
   "extDescription": {
-    "message": "监控 Claude.ai 对话额度状态，并在冷却期结束后通过操作系统原生通知提醒您。",
+    "message": "额度一恢复就用系统桌面通知提醒你，还帮你排好接下来的 5 小时窗口时间表。",
     "description": "扩展描述，显示在 Chrome 和应用商店中。"
   },
   "actionTitle": {
